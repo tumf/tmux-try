@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# Frontend script for tmuxinator
+# Usage: ./session [<project-dir>|<tmuxinator-name>]
+
+set -e
+
+# Use current directory if no argument is provided
+if [ $# -eq 0 ]; then
+  ARG="."
+else
+  ARG="$1"
+fi
+
+# Check if the argument is a tmuxinator project name
+TMUXINATOR_PROJECTS=$(tmuxinator list 2>/dev/null | tail -n +2 | tr -d '\n')
+
+if echo "$TMUXINATOR_PROJECTS" | grep -q "\b$ARG\b"; then
+  # Argument is a tmuxinator project name
+  echo "Starting tmuxinator project: $ARG"
+  tmuxinator start "$ARG"
+else
+  # Argument is treated as a project directory
+  PROJECT_DIR="$ARG"
+  
+  # Create project directory if it doesn't exist
+  mkdir -p "$PROJECT_DIR"
+  
+  # Change to project directory
+  cd "$PROJECT_DIR"
+  
+  # Create .tmuxinator.yml if it doesn't exist
+  if [ ! -f ".tmuxinator.yml" ]; then
+    echo "Creating .tmuxinator.yml..."
+    cat >.tmuxinator.yml <<'EOF'
+# .tmuxinator.yml
+
+name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
+root: <%= Dir.pwd %>
+
+windows:
+  - main:
+      panes:
+        - zsh
+        - yazi
+  - editor:
+      panes:
+        - nvim
+  - opencode:
+      panes:
+        - opencode
+EOF
+    echo ".tmuxinator.yml created"
+  fi
+  
+  # Run tmuxinator local
+  echo "Starting tmuxinator with local config..."
+  tmuxinator local
+fi

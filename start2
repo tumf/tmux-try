@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Frontend script for tmuxinator
+# Usage: ./start <project-dir>
+
+set -e
+
+# Check if project directory is provided
+if [ $# -eq 0 ]; then
+  echo "Usage: $0 <project-dir>"
+  exit 1
+fi
+
+PROJECT_DIR="$1"
+
+# Create project directory if it doesn't exist
+mkdir -p "$PROJECT_DIR"
+
+# Change to project directory
+cd "$PROJECT_DIR"
+
+# Create .tmuxinator.yml if it doesn't exist
+if [ ! -f ".tmuxinator.yml" ]; then
+  echo "Creating .tmuxinator.yml..."
+  cat >.tmuxinator.yml <<'EOF'
+# .tmuxinator.yml
+
+name: <%= File.basename(Dir.pwd) %>
+root: <%= Dir.pwd %>
+
+windows:
+  - main:
+      panes:
+        - zsh
+        - yazi
+  - editor:
+      panes:
+        - nvim
+  - opencode:
+      panes:
+        - opencode
+EOF
+  echo ".tmuxinator.yml created"
+fi
+
+# Run tmuxinator local
+echo "Starting tmuxinator..."
+tmuxinator local
