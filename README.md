@@ -122,16 +122,6 @@ try-tmux git@host.com:user/repo
 
 **Note**: The `.git` suffix is optional and will be automatically handled by `try`.
 
-#### Option 3: Using `try-resume`
-
-```bash
-# Use try's fuzzy search to find existing experiment, then start tmux session
-try-resume
-
-# Search for specific experiment
-try-resume redis
-```
-
 ### Installing `try`
 
 **RubyGems (Recommended):**
