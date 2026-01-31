@@ -138,15 +138,13 @@ start_session_in_dir() {
       echo "Creating .tmuxinator.yml..."
       cat >.tmuxinator.yml <<'EOF'
 # .tmuxinator.yml
+# https://github.com/tmuxinator/tmuxinator
 
 name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
 root: <%= Dir.pwd %>
 
 windows:
   - main:
-      panes:
-        - zsh
-        - zsh
 EOF
       echo ".tmuxinator.yml created"
     fi
