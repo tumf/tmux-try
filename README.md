@@ -1,14 +1,17 @@
 # tmux-session
 
-A simple frontend script for tmuxinator that automatically creates and manages local tmux session configurations.
+A simple tmux session manager that works with or without tmuxinator, automatically creating and managing tmux sessions.
 
 ## Features
 
-- Automatically creates `.tmuxinator.yml` in project directories
+- Works with or without tmuxinator installed (automatically detects and adapts)
+- Automatically creates `.tmuxinator.yml` when tmuxinator is available
+- Falls back to native tmux commands when tmuxinator is not installed
 - Supports both tmuxinator project names and directory paths
 - Uses current directory if no argument is provided
 - Creates project directory if it doesn't exist
-- Simple, single-file Bash script with no external dependencies (except tmuxinator)
+- Prevents duplicate sessions (attaches to existing session if found)
+- Simple, single-file Bash script
 - **NEW**: Integration with [try](https://github.com/tobi/try) for experiment directory management
 
 ## Installation
@@ -16,16 +19,14 @@ A simple frontend script for tmuxinator that automatically creates and manages l
 1. Copy the scripts to a directory in your PATH:
    ```bash
    cp tmux-session /usr/local/bin/tmux-session
-   # Optional: Install try integration scripts
+   # Optional: Install try integration script
    cp try-tmux /usr/local/bin/try-tmux
-   cp try-resume /usr/local/bin/try-resume
    ```
 
 2. Make them executable:
    ```bash
    chmod +x /usr/local/bin/tmux-session
    chmod +x /usr/local/bin/try-tmux      # Optional
-   chmod +x /usr/local/bin/try-resume    # Optional
    ```
 
 ## Usage
@@ -56,14 +57,46 @@ tmux-session ./new-project
 
 If you have [try](https://github.com/tobi/try) installed, you can use these additional features:
 
-#### Option 1: Using `tmux-session --try`
+#### Using `try-tmux` (Recommended)
 
 ```bash
-# Create experiment directory with try and start tmux session
-tmux-session --try redis-pool
+# Interactive selector - shows all experiments
+try-tmux
+# → Opens fuzzy finder to select existing experiment or create new one
 
-# This creates ~/src/tries/2026-01-31-redis-pool/ and starts a session
+# Create new experiment and start tmux session
+try-tmux redis-experiment
+# → Creates ~/src/tries/2026-01-31-redis-pool/ and starts a session
+
+# Search and select existing experiments
+try-tmux redis
+# → Opens fuzzy finder filtered by "redis"
+
+# Clone a GitHub repo (shorthand - no 'clone' or '.git' needed)
+try-tmux https://github.com/tobi/try
+# → Clones to ~/src/tries/2026-01-31-tobi-try/ and starts a session
+
+# Clone with custom name
+try-tmux https://github.com/user/repo my-fork
+# → Clones to ~/src/tries/my-fork/
+
+# Clone using SSH URL
+try-tmux git@github.com:user/repo
+
+# Clone from GitLab or other Git hosts
+try-tmux https://gitlab.com/user/repo
 ```
+
+#### Alternative: Using `tmux-session --try`
+
+```bash
+# Same functionality as try-tmux
+tmux-session --try
+tmux-session --try redis-pool
+tmux-session --try https://github.com/tobi/try
+```
+
+
 
 #### Option 2: Using `try-tmux` (Recommended)
 
@@ -71,9 +104,23 @@ tmux-session --try redis-pool
 # Create new experiment and start tmux session in one command
 try-tmux redis-experiment
 
-# Clone a GitHub repo and start tmux session
-try-tmux clone https://github.com/user/repo.git
+# Clone a GitHub repo (shorthand - no 'clone' or '.git' needed)
+try-tmux https://github.com/tobi/try
+# → Creates ~/src/tries/2026-01-31-tobi-try/ with auto-generated name
+
+# Clone with custom name
+try-tmux https://github.com/user/repo my-fork
+# → Creates ~/src/tries/my-fork/
+
+# Clone using SSH URL
+try-tmux git@github.com:user/repo
+
+# Clone from GitLab or other Git hosts
+try-tmux https://gitlab.com/user/repo
+try-tmux git@host.com:user/repo
 ```
+
+**Note**: The `.git` suffix is optional and will be automatically handled by `try`.
 
 #### Option 3: Using `try-resume`
 
@@ -113,7 +160,9 @@ For more details, see the [try documentation](https://github.com/tobi/try).
 - **bash**: Shell (version 4.0 or later)
 - **try**: (Optional) Experiment directory manager for `--try` features
 
-### Installing tmuxinator
+### Installing tmuxinator (Optional)
+
+**Note**: tmuxinator is optional. The script will work with plain tmux if tmuxinator is not installed.
 
 **macOS (using Homebrew):**
 ```bash
@@ -141,15 +190,24 @@ For more installation options, see the [official tmuxinator documentation](https
 
 ## How it works
 
-The `tmux-session` script intelligently handles two modes:
+The `tmux-session` script intelligently handles multiple modes:
 
-1. **Tmuxinator project mode**: If the argument matches an existing tmuxinator project name, it runs `tmuxinator start <project-name>`
+1. **Tmuxinator project mode** (if tmuxinator is installed): 
+   - If the argument matches an existing tmuxinator project name, it runs `tmuxinator start <project-name>`
 
-2. **Local directory mode**: Otherwise, it:
+2. **Local directory mode with tmuxinator** (if tmuxinator is installed):
    - Creates the directory if it doesn't exist
    - Changes to that directory
    - Creates a default `.tmuxinator.yml` if not present
    - Runs `tmuxinator local` to start the session
+
+3. **Local directory mode without tmuxinator** (fallback):
+   - Creates the directory if it doesn't exist
+   - Changes to that directory
+   - Creates a simple tmux session
+   - Attaches to the session
+
+4. **Session reuse**: If a session with the same name already exists, it attaches to that session instead of creating a new one
 
 ### Default Configuration
 
