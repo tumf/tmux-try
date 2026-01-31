@@ -96,24 +96,7 @@ tmux-try
 
 ### Installing try
 
-**RubyGems (Recommended):**
-```bash
-gem install try-cli
-eval "$(try init)"  # Add to .zshrc or .bashrc
-```
-
-**Homebrew:**
-```bash
-brew tap tobi/try https://github.com/tobi/try
-brew install try
-```
-
-**Rust version:**
-```bash
-cargo install try-cli
-```
-
-For more details, see the [try documentation](https://github.com/tobi/try).
+For installation instructions, see the official [try documentation](https://github.com/tobi/try).
 
 ### Installing tmuxinator (Optional)
 
