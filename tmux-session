@@ -2,14 +2,51 @@
 
 # Frontend script for tmuxinator
 # Usage: ./tmux-session [<project-dir>|<tmuxinator-name>]
+#        ./tmux-session --try <experiment-name>
 
 set -e
 
-# Use current directory if no argument is provided
-if [ $# -eq 0 ]; then
+# Check for --try option
+if [[ "$1" == "--try" ]]; then
+  if [[ $# -lt 2 ]]; then
+    echo "Error: --try option requires an experiment name" >&2
+    echo "Usage: tmux-session --try <experiment-name>" >&2
+    exit 1
+  fi
+
+  # Check if try is installed
+  if ! command -v try >/dev/null 2>&1; then
+    echo "Error: 'try' command not found" >&2
+    echo "" >&2
+    echo "Please install 'try' first:" >&2
+    echo "  gem install try-cli" >&2
+    echo "  # or" >&2
+    echo "  cargo install try-cli" >&2
+    echo "  # or" >&2
+    echo "  brew tap tobi/try https://github.com/tobi/try" >&2
+    echo "  brew install try" >&2
+    echo "" >&2
+    echo "Then add to your shell config:" >&2
+    echo "  eval \"\$(try init)\"" >&2
+    exit 1
+  fi
+
+  shift  # Remove --try
+  EXPERIMENT_NAME="$1"
+  shift  # Remove experiment name
+
+  # Run try to create/navigate to experiment directory
+  try "$EXPERIMENT_NAME" "$@"
+
+  # Set ARG to current directory for tmux session
   ARG="."
 else
-  ARG="$1"
+  # Use current directory if no argument is provided
+  if [ $# -eq 0 ]; then
+    ARG="."
+  else
+    ARG="$1"
+  fi
 fi
 
 # Check if the argument is a tmuxinator project name
