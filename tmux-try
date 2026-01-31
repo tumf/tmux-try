@@ -47,39 +47,39 @@ show_try_install_help() {
 # Function to execute try and get target directory
 run_try() {
   local try_args=("$@")
-  
+
   # Use try exec with proper TTY handling (mimics try shell function)
   # Redirect stderr to /dev/tty to allow interactive selector
   local try_script
   try_script=$(try exec --path "$TRY_PATH" "${try_args[@]}" 2>/dev/tty)
   local try_exit_code=$?
-  
+
   # Check if try was cancelled or failed
   if [[ $try_exit_code -ne 0 ]]; then
     exit 1
   fi
-  
+
   # Check if output is empty
   if [[ -z "$try_script" ]]; then
     echo "Error: No directory selected" >&2
     exit 1
   fi
-  
+
   # Extract the target directory from the try exec output
   local target_dir
   target_dir=$(echo "$try_script" | grep -o "cd '[^']*'" | head -1 | cut -d"'" -f2)
   if [[ -z "$target_dir" ]]; then
     target_dir=$(echo "$try_script" | grep -o 'cd .*' | head -1 | cut -d' ' -f2- | tr -d '"' | tr -d "'")
   fi
-  
+
   if [[ -z "$target_dir" ]]; then
     echo "Error: Could not determine target directory" >&2
     exit 1
   fi
-  
+
   # Execute the try script (this will create directories, clone repos, etc.)
   eval "$try_script"
-  
+
   # Return the target directory
   echo "$target_dir"
 }
@@ -106,20 +106,20 @@ is_path() {
 # Function to start tmux session in a directory
 start_session_in_dir() {
   local project_dir="$1"
-  
+
   # Create project directory if it doesn't exist
   mkdir -p "$project_dir"
-  
+
   # Change to project directory
   cd "$project_dir"
-  
+
   # Get absolute path
   project_dir="$(pwd)"
-  
+
   # Generate session name from directory name
   local session_name
   session_name=$(basename "$project_dir" | tr '.' '_')
-  
+
   # Check if tmux session already exists
   if tmux has-session -t "$session_name" 2>/dev/null; then
     echo "Attaching to existing tmux session: $session_name"
@@ -130,14 +130,27 @@ start_session_in_dir() {
     fi
     return 0
   fi
-  
+
   # Use tmuxinator if available
   if [[ "$HAS_TMUXINATOR" == "true" ]]; then
     # Create .tmuxinator.yml if it doesn't exist
     if [[ ! -f ".tmuxinator.yml" ]]; then
       echo "Creating .tmuxinator.yml..."
-      cat >.tmuxinator.yml <<'EOF'
+
+      # Get script directory (where this script is located)
+      local script_dir
+      script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+      # Copy template from script directory
+      if [[ -f "$script_dir/.tmuxinator.yml" ]]; then
+        cp "$script_dir/.tmuxinator.yml" .tmuxinator.yml
+        echo ".tmuxinator.yml created from template"
+      else
+        echo "Warning: Template not found at $script_dir/.tmuxinator.yml" >&2
+        echo "Creating default .tmuxinator.yml..." >&2
+        cat >.tmuxinator.yml <<'EOF'
 # .tmuxinator.yml
+# https://github.com/tmuxinator/tmuxinator
 
 name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
 root: <%= Dir.pwd %>
@@ -146,9 +159,9 @@ windows:
   - main:
       panes:
         - zsh
-        - opencode
 EOF
-      echo ".tmuxinator.yml created"
+        echo ".tmuxinator.yml created with default template"
+      fi
     fi
 
     # Run tmuxinator local
@@ -157,7 +170,7 @@ EOF
   else
     # Fallback: Create tmux session directly without tmuxinator
     echo "Starting tmux session: $session_name (tmuxinator not available)"
-    
+
     # Create and attach to new session
     if [[ -n "$TMUX" ]]; then
       # Already inside tmux, create detached and switch
@@ -182,7 +195,7 @@ if [[ -n "$ARG" ]] && is_git_url "$ARG"; then
     show_try_install_help
     exit 1
   fi
-  
+
   TARGET_DIR=$(run_try "$@")
   start_session_in_dir "$TARGET_DIR"
   exit 0
@@ -211,7 +224,7 @@ fi
 # First check if it's a tmuxinator project
 if [[ "$HAS_TMUXINATOR" == "true" ]]; then
   TMUXINATOR_PROJECTS=$(tmuxinator list 2>/dev/null | tail -n +2 | tr -d '\n')
-  
+
   if echo "$TMUXINATOR_PROJECTS" | grep -q "\b$ARG\b"; then
     echo "Starting tmuxinator project: $ARG"
     tmuxinator start "$ARG"
