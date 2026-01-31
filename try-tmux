@@ -1,7 +1,14 @@
 #!/bin/bash
 
 # try-tmux: Create experiment directory with try and start tmux session
-# Usage: try-tmux <experiment-name> [additional-try-args...]
+# Usage: try-tmux [experiment-name|git-url] [additional-try-args...]
+# Examples:
+#   try-tmux                            # Interactive selector
+#   try-tmux redis                      # Filter by "redis"
+#   try-tmux redis-experiment           # Create new experiment
+#   try-tmux https://github.com/tobi/try  # Clone repo
+#   try-tmux git@github.com:user/repo   # Clone via SSH
+# Note: Works with or without tmuxinator installed. .git suffix is optional.
 
 set -e
 
@@ -34,8 +41,40 @@ else
   exit 1
 fi
 
-# Run try with all arguments
-try "$@"
+# Get try configuration
+TRY_PATH="${TRY_PATH:-$HOME/src/tries}"
 
-# Start tmux session in the directory try moved us to
-"$TMUX_SESSION_CMD" .
+# Use try exec with proper TTY handling (mimics try shell function)
+# Redirect stderr to /dev/tty to allow interactive selector
+TRY_SCRIPT=$(try exec --path "$TRY_PATH" "$@" 2>/dev/tty)
+TRY_EXIT_CODE=$?
+
+# Check if try was cancelled or failed
+if [[ $TRY_EXIT_CODE -ne 0 ]]; then
+  # Silent exit on cancellation (user pressed Ctrl-C or ESC)
+  exit 1
+fi
+
+# Check if output is empty
+if [[ -z "$TRY_SCRIPT" ]]; then
+  echo "Error: No directory selected" >&2
+  exit 1
+fi
+
+# Extract the target directory from the try exec output before executing
+# The output is typically "cd <directory>" or a script that includes "cd <directory>"
+TARGET_DIR=$(echo "$TRY_SCRIPT" | grep -o "cd '[^']*'" | head -1 | cut -d"'" -f2)
+if [[ -z "$TARGET_DIR" ]]; then
+  TARGET_DIR=$(echo "$TRY_SCRIPT" | grep -o 'cd .*' | head -1 | cut -d' ' -f2- | tr -d '"' | tr -d "'")
+fi
+
+if [[ -z "$TARGET_DIR" ]]; then
+  echo "Error: Could not determine target directory" >&2
+  exit 1
+fi
+
+# Execute the try script (this will create directories, clone repos, etc.)
+eval "$TRY_SCRIPT"
+
+# Start tmux session in the selected/created directory
+"$TMUX_SESSION_CMD" "$TARGET_DIR"
