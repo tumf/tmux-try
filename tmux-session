@@ -1,9 +1,14 @@
 #!/bin/bash
 
-# Tmux session manager with optional tmuxinator support
-# Usage: ./tmux-session [<project-dir>|<tmuxinator-name>]
-#        ./tmux-session --try <experiment-name|git-url>
-# Supported Git URLs: https://github.com/user/repo, git@github.com:user/repo, etc. (.git optional)
+# Tmux session manager with try integration
+# Usage:
+#   tmux-session                     # Interactive try selector (or current dir if try not installed)
+#   tmux-session ./path              # Use explicit directory path
+#   tmux-session ~/projects/app      # Use home-relative path
+#   tmux-session /absolute/path      # Use absolute path
+#   tmux-session myproject           # tmuxinator project or try experiment name
+#   tmux-session https://github.com/user/repo  # Clone and start session
+#   tmux-session git@github.com:user/repo      # Clone via SSH
 
 set -e
 
@@ -13,117 +18,125 @@ if command -v tmuxinator >/dev/null 2>&1; then
   HAS_TMUXINATOR=true
 fi
 
-# Check for --try option
-if [[ "$1" == "--try" ]]; then
-  # Check if try is installed
-  if ! command -v try >/dev/null 2>&1; then
-    echo "Error: 'try' command not found" >&2
-    echo "" >&2
-    echo "Please install 'try' first:" >&2
-    echo "  gem install try-cli" >&2
-    echo "  # or" >&2
-    echo "  cargo install try-cli" >&2
-    echo "  # or" >&2
-    echo "  brew tap tobi/try https://github.com/tobi/try" >&2
-    echo "  brew install try" >&2
-    echo "" >&2
-    echo "Then add to your shell config:" >&2
-    echo "  eval \"\$(try init)\"" >&2
-    exit 1
-  fi
+# Check if try is available
+HAS_TRY=false
+if command -v try >/dev/null 2>&1; then
+  HAS_TRY=true
+fi
 
-  shift  # Remove --try
-  
-  # Get try configuration
-  TRY_PATH="${TRY_PATH:-$HOME/src/tries}"
+# Get try configuration
+TRY_PATH="${TRY_PATH:-$HOME/src/tries}"
+
+# Function to show try installation instructions
+show_try_install_help() {
+  echo "" >&2
+  echo "Please install 'try' first:" >&2
+  echo "  gem install try-cli" >&2
+  echo "  # or" >&2
+  echo "  cargo install try-cli" >&2
+  echo "  # or" >&2
+  echo "  brew tap tobi/try https://github.com/tobi/try" >&2
+  echo "  brew install try" >&2
+  echo "" >&2
+  echo "Then add to your shell config:" >&2
+  echo "  eval \"\$(try init)\"" >&2
+  echo "" >&2
+  echo "For more info: https://github.com/tobi/try" >&2
+}
+
+# Function to execute try and get target directory
+run_try() {
+  local try_args=("$@")
   
   # Use try exec with proper TTY handling (mimics try shell function)
   # Redirect stderr to /dev/tty to allow interactive selector
-  TRY_SCRIPT=$(try exec --path "$TRY_PATH" "$@" 2>/dev/tty)
-  TRY_EXIT_CODE=$?
+  local try_script
+  try_script=$(try exec --path "$TRY_PATH" "${try_args[@]}" 2>/dev/tty)
+  local try_exit_code=$?
   
   # Check if try was cancelled or failed
-  if [[ $TRY_EXIT_CODE -ne 0 ]]; then
-    # Silent exit on cancellation (user pressed Ctrl-C or ESC)
+  if [[ $try_exit_code -ne 0 ]]; then
     exit 1
   fi
   
   # Check if output is empty
-  if [[ -z "$TRY_SCRIPT" ]]; then
+  if [[ -z "$try_script" ]]; then
     echo "Error: No directory selected" >&2
     exit 1
   fi
   
-  # Extract the target directory from the try exec output before executing
-  # The output is typically "cd <directory>" or a script that includes "cd <directory>"
-  TARGET_DIR=$(echo "$TRY_SCRIPT" | grep -o "cd '[^']*'" | head -1 | cut -d"'" -f2)
-  if [[ -z "$TARGET_DIR" ]]; then
-    TARGET_DIR=$(echo "$TRY_SCRIPT" | grep -o 'cd .*' | head -1 | cut -d' ' -f2- | tr -d '"' | tr -d "'")
+  # Extract the target directory from the try exec output
+  local target_dir
+  target_dir=$(echo "$try_script" | grep -o "cd '[^']*'" | head -1 | cut -d"'" -f2)
+  if [[ -z "$target_dir" ]]; then
+    target_dir=$(echo "$try_script" | grep -o 'cd .*' | head -1 | cut -d' ' -f2- | tr -d '"' | tr -d "'")
   fi
   
-  if [[ -z "$TARGET_DIR" ]]; then
+  if [[ -z "$target_dir" ]]; then
     echo "Error: Could not determine target directory" >&2
     exit 1
   fi
   
   # Execute the try script (this will create directories, clone repos, etc.)
-  eval "$TRY_SCRIPT"
+  eval "$try_script"
   
-  # Set ARG to the directory try selected/created
-  ARG="$TARGET_DIR"
-else
-  # Use current directory if no argument is provided
-  if [ $# -eq 0 ]; then
-    ARG="."
-  else
-    ARG="$1"
-  fi
-fi
+  # Return the target directory
+  echo "$target_dir"
+}
 
-# Check if tmuxinator is available and argument is a tmuxinator project name
-if [[ "$HAS_TMUXINATOR" == "true" ]]; then
-  TMUXINATOR_PROJECTS=$(tmuxinator list 2>/dev/null | tail -n +2 | tr -d '\n')
+# Function to check if argument is a Git URL
+is_git_url() {
+  local arg="$1"
+  # Match https://*.git, https://github.com/*, git@*:*, etc.
+  if [[ "$arg" =~ ^https?:// ]] || [[ "$arg" =~ ^git@ ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# Function to check if argument is a path (starts with ./, ~/, or /)
+is_path() {
+  local arg="$1"
+  if [[ "$arg" =~ ^\./ ]] || [[ "$arg" =~ ^~/ ]] || [[ "$arg" =~ ^/ ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# Function to start tmux session in a directory
+start_session_in_dir() {
+  local project_dir="$1"
   
-  if echo "$TMUXINATOR_PROJECTS" | grep -q "\b$ARG\b"; then
-    # Argument is a tmuxinator project name
-    echo "Starting tmuxinator project: $ARG"
-    tmuxinator start "$ARG"
-    exit 0
+  # Create project directory if it doesn't exist
+  mkdir -p "$project_dir"
+  
+  # Change to project directory
+  cd "$project_dir"
+  
+  # Get absolute path
+  project_dir="$(pwd)"
+  
+  # Generate session name from directory name
+  local session_name
+  session_name=$(basename "$project_dir" | tr '.' '_')
+  
+  # Check if tmux session already exists
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    echo "Attaching to existing tmux session: $session_name"
+    if [[ -n "$TMUX" ]]; then
+      tmux switch-client -t "$session_name"
+    else
+      tmux attach-session -t "$session_name"
+    fi
+    return 0
   fi
-fi
-
-# Argument is treated as a project directory
-PROJECT_DIR="$ARG"
-
-# Create project directory if it doesn't exist
-mkdir -p "$PROJECT_DIR"
-
-# Change to project directory
-cd "$PROJECT_DIR"
-
-# Get absolute path
-PROJECT_DIR="$(pwd)"
-
-# Generate session name from directory name
-SESSION_NAME=$(basename "$PROJECT_DIR" | tr '.' '_')
-
-# Check if tmux session already exists
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  echo "Attaching to existing tmux session: $SESSION_NAME"
-  if [[ -n "$TMUX" ]]; then
-    tmux switch-client -t "$SESSION_NAME"
-  else
-    tmux attach-session -t "$SESSION_NAME"
-  fi
-  exit 0
-fi
-
-# Use tmuxinator if available and .tmuxinator.yml exists or can be created
-if [[ "$HAS_TMUXINATOR" == "true" ]]; then
-  # Create .tmuxinator.yml if it doesn't exist
-  if [[ ! -f ".tmuxinator.yml" ]]; then
-    echo "Creating .tmuxinator.yml..."
-    cat >.tmuxinator.yml <<'EOF'
+  
+  # Use tmuxinator if available
+  if [[ "$HAS_TMUXINATOR" == "true" ]]; then
+    # Create .tmuxinator.yml if it doesn't exist
+    if [[ ! -f ".tmuxinator.yml" ]]; then
+      echo "Creating .tmuxinator.yml..."
+      cat >.tmuxinator.yml <<'EOF'
 # .tmuxinator.yml
 
 name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
@@ -135,23 +148,89 @@ windows:
         - zsh
         - opencode
 EOF
-    echo ".tmuxinator.yml created"
-  fi
+      echo ".tmuxinator.yml created"
+    fi
 
-  # Run tmuxinator local
-  echo "Starting tmuxinator with local config..."
-  tmuxinator local
-else
-  # Fallback: Create tmux session directly without tmuxinator
-  echo "Starting tmux session: $SESSION_NAME (tmuxinator not available)"
-  
-  # Create and attach to new session
-  if [[ -n "$TMUX" ]]; then
-    # Already inside tmux, create detached and switch
-    tmux new-session -d -s "$SESSION_NAME" -c "$PROJECT_DIR"
-    tmux switch-client -t "$SESSION_NAME"
+    # Run tmuxinator local
+    echo "Starting tmuxinator with local config..."
+    tmuxinator local
   else
-    # Not inside tmux, create and attach directly
-    tmux new-session -s "$SESSION_NAME" -c "$PROJECT_DIR"
+    # Fallback: Create tmux session directly without tmuxinator
+    echo "Starting tmux session: $session_name (tmuxinator not available)"
+    
+    # Create and attach to new session
+    if [[ -n "$TMUX" ]]; then
+      # Already inside tmux, create detached and switch
+      tmux new-session -d -s "$session_name" -c "$project_dir"
+      tmux switch-client -t "$session_name"
+    else
+      # Not inside tmux, create and attach directly
+      tmux new-session -s "$session_name" -c "$project_dir"
+    fi
+  fi
+}
+
+# Main logic
+ARG="${1:-}"
+
+# Case 1: Git URL - requires try
+if [[ -n "$ARG" ]] && is_git_url "$ARG"; then
+  if [[ "$HAS_TRY" != "true" ]]; then
+    echo "Error: 'try' command not found" >&2
+    echo "" >&2
+    echo "Git URL cloning requires 'try' for experiment management." >&2
+    show_try_install_help
+    exit 1
+  fi
+  
+  TARGET_DIR=$(run_try "$@")
+  start_session_in_dir "$TARGET_DIR"
+  exit 0
+fi
+
+# Case 2: Explicit path (./, ~/, /)
+if [[ -n "$ARG" ]] && is_path "$ARG"; then
+  # Expand ~ if present
+  ARG="${ARG/#\~/$HOME}"
+  start_session_in_dir "$ARG"
+  exit 0
+fi
+
+# Case 3: No argument - try selector or current directory
+if [[ -z "$ARG" ]]; then
+  if [[ "$HAS_TRY" == "true" ]]; then
+    TARGET_DIR=$(run_try)
+    start_session_in_dir "$TARGET_DIR"
+  else
+    start_session_in_dir "."
+  fi
+  exit 0
+fi
+
+# Case 4: Name only (no path separators)
+# First check if it's a tmuxinator project
+if [[ "$HAS_TMUXINATOR" == "true" ]]; then
+  TMUXINATOR_PROJECTS=$(tmuxinator list 2>/dev/null | tail -n +2 | tr -d '\n')
+  
+  if echo "$TMUXINATOR_PROJECTS" | grep -q "\b$ARG\b"; then
+    echo "Starting tmuxinator project: $ARG"
+    tmuxinator start "$ARG"
+    exit 0
   fi
 fi
+
+# Not a tmuxinator project - use try
+if [[ "$HAS_TRY" != "true" ]]; then
+  echo "Error: 'try' command not found" >&2
+  echo "" >&2
+  echo "Name-based sessions require 'try' for experiment management." >&2
+  echo "" >&2
+  echo "Please either:" >&2
+  echo "  1. Install 'try' (see below)" >&2
+  echo "  2. Use explicit path: tmux-session ./$ARG" >&2
+  show_try_install_help
+  exit 1
+fi
+
+TARGET_DIR=$(run_try "$@")
+start_session_in_dir "$TARGET_DIR"
