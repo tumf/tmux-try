@@ -140,7 +140,7 @@ start_session_in_dir() {
 # .tmuxinator.yml
 # https://github.com/tmuxinator/tmuxinator
 
-name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
+name: <%= File.basename(Dir.pwd).tr('.', '_') %>
 root: <%= Dir.pwd %>
 
 windows:

@@ -1,0 +1,8 @@
+# .tmuxinator.yml
+# https://github.com/tmuxinator/tmuxinator
+
+name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
+root: <%= Dir.pwd %>
+
+windows:
+  - main:
