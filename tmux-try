@@ -144,24 +144,8 @@ start_session_in_dir() {
     return 0
   fi
 
-  # Use tmuxinator if available
-  if [[ "$HAS_TMUXINATOR" == "true" ]]; then
-    # Create .tmuxinator.yml if it doesn't exist
-    if [[ ! -f ".tmuxinator.yml" ]]; then
-      echo "Creating .tmuxinator.yml..."
-      cat >.tmuxinator.yml <<'EOF'
-# .tmuxinator.yml
-# https://github.com/tmuxinator/tmuxinator
-
-name: <%= File.basename(Dir.pwd).gsub('.', '_') %>
-root: <%= Dir.pwd %>
-
-windows:
-  - main:
-EOF
-      echo ".tmuxinator.yml created"
-    fi
-
+  # Use tmuxinator if available and .tmuxinator.yml exists
+  if [[ "$HAS_TMUXINATOR" == "true" ]] && [[ -f ".tmuxinator.yml" ]]; then
     # Run tmuxinator local
     echo "Starting tmuxinator with local config..."
     tmuxinator local
