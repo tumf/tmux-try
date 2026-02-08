@@ -66,11 +66,15 @@ run_try() {
   fi
 
   # Extract the target directory from the try exec output
+  # Sanitize by removing newlines and control characters
   local target_dir
-  target_dir=$(echo "$try_script" | grep -o "cd '[^']*'" | head -1 | cut -d"'" -f2)
+  target_dir=$(echo "$try_script" | grep -o "cd '[^']*'" | head -1 | cut -d"'" -f2 | tr -d '\n\r' | sed 's/[[:cntrl:]]//g')
   if [[ -z "$target_dir" ]]; then
-    target_dir=$(echo "$try_script" | grep -o 'cd .*' | head -1 | cut -d' ' -f2- | tr -d '"' | tr -d "'")
+    target_dir=$(echo "$try_script" | grep -o 'cd .*' | head -1 | cut -d' ' -f2- | tr -d '"\047\n\r' | sed 's/[[:cntrl:]]//g')
   fi
+  
+  # Trim leading/trailing whitespace
+  target_dir=$(echo "$target_dir" | xargs)
 
   if [[ -z "$target_dir" ]]; then
     echo "Error: Could not determine target directory" >&2
