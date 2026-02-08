@@ -78,7 +78,16 @@ run_try() {
   fi
 
   # Execute the try script (this will create directories, clone repos, etc.)
-  eval "$try_script"
+  # Only execute lines that look like shell commands (start with cd, mkdir, git, etc.)
+  # This filters out informational messages from try
+  while IFS= read -r line; do
+    # Skip empty lines and comments
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    # Only execute lines that start with known commands
+    if [[ "$line" =~ ^(cd|mkdir|git|export|eval|source)[[:space:]] ]]; then
+      eval "$line"
+    fi
+  done <<< "$try_script"
 
   # Return the target directory
   echo "$target_dir"
